@@ -1,6 +1,7 @@
 import json
 import traceback
 from functools import wraps
+from pathlib import Path
 from threading import Lock
 from typing import Dict
 
@@ -14,6 +15,7 @@ from flask import (
     jsonify,
     make_response,
     request,
+    send_file,
 )
 from flask_restx import Api, Resource, fields
 
@@ -267,6 +269,51 @@ class EventResource(Resource):
         )
         success = current_app.api.delete_event(bucket_id, event_id)
         return {"success": success}, 200
+
+
+def _resolve_event_asset_path(event: Event, asset_index: int) -> Path:
+    data = event.get("data", {}) if isinstance(event, dict) else (event.data or {})
+    local_dir = data.get("local_dir")
+    allowed_root = Path(local_dir).expanduser().resolve() if local_dir else None
+
+    candidate_path = None
+    images = data.get("images")
+    if isinstance(images, list):
+        if asset_index < 0 or asset_index >= len(images):
+            raise FileNotFoundError("Asset index out of range")
+        image_data = images[asset_index] or {}
+        candidate_path = image_data.get("path")
+    elif asset_index == 0:
+        candidate_path = data.get("path")
+
+    if not candidate_path:
+        raise FileNotFoundError("Asset path not found in event data")
+
+    asset_path = Path(candidate_path).expanduser().resolve()
+
+    if allowed_root and not asset_path.is_relative_to(allowed_root):
+        raise PermissionError("Asset path is outside the allowed event directory")
+    if not asset_path.is_file():
+        raise FileNotFoundError(f"Asset file not found: {asset_path}")
+
+    return asset_path
+
+
+@api.route("/0/buckets/<string:bucket_id>/events/<int:event_id>/assets/<int:asset_index>")
+class EventAssetResource(Resource):
+    def get(self, bucket_id: str, event_id: int, asset_index: int):
+        event = current_app.api.get_event(bucket_id, event_id)
+        if not event:
+            return {"message": "Event not found"}, 404
+
+        try:
+            asset_path = _resolve_event_asset_path(event, asset_index)
+        except FileNotFoundError as exc:
+            return {"message": str(exc)}, 404
+        except PermissionError as exc:
+            return {"message": str(exc)}, 403
+
+        return send_file(asset_path)
 
 
 @api.route("/0/buckets/<string:bucket_id>/heartbeat")

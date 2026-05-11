@@ -88,4 +88,42 @@ def test_get_events(flask_client, bucket, benchmark):
         assert len(r.json) == n_events
 
 
+def test_get_event_asset(flask_client, bucket, tmp_path):
+    asset_dir = tmp_path / "screenshots" / "2025" / "01" / "01" / "12"
+    asset_dir.mkdir(parents=True)
+    asset_path = asset_dir / "screenshot-test-display-0.webp"
+    asset_bytes = b"RIFFxxxxWEBPVP8 "
+    asset_path.write_bytes(asset_bytes)
+
+    now = datetime.now()
+    r = flask_client.post(
+        f"/api/0/buckets/{bucket}/heartbeat?pulsetime=0",
+        json={
+            "timestamp": now,
+            "duration": 0,
+            "data": {
+                "local_dir": str(asset_dir),
+                "images": [
+                    {
+                        "monitor_id": "display-0",
+                        "path": str(asset_path),
+                        "relative_path": "2025/01/01/12/screenshot-test-display-0.webp",
+                    }
+                ],
+            },
+        },
+    )
+    assert r.status_code == 200
+    events_response = flask_client.get(f"/api/0/buckets/{bucket}/events")
+    assert events_response.status_code == 200
+    assert len(events_response.json) == 1
+    event_id = events_response.json[0]["id"]
+
+    asset_response = flask_client.get(
+        f"/api/0/buckets/{bucket}/events/{event_id}/assets/0"
+    )
+    assert asset_response.status_code == 200
+    assert asset_response.data == asset_bytes
+
+
 # TODO: Add benchmark for basic AFK-filtering query

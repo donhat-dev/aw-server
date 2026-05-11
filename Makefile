@@ -1,7 +1,11 @@
 .PHONY: aw-webui build install test typecheck package clean
 
+PYTHON ?= python
+POETRY ?= $(PYTHON) -m poetry
+PYINSTALLER ?= $(PYTHON) -m PyInstaller
+
 build: aw-webui
-	poetry install
+	$(POETRY) install
 
 aw-webui:
 	mkdir -p aw_server/static/
@@ -31,7 +35,7 @@ typecheck:
 
 package: bump-version
 	rm -rf dist
-	pyinstaller aw-server.spec --clean --noconfirm
+	$(PYINSTALLER) aw-server.spec --clean --noconfirm
 
 PYFILES=$(shell find . -name '*.py')
 
@@ -39,7 +43,7 @@ lint:
 	ruff check .
 
 lint-fix:
-	poetry run pyupgrade --py38-plus --exit-zero-even-if-changed $(PYFILES)
+	$(POETRY) run pyupgrade --py38-plus --exit-zero-even-if-changed $(PYFILES)
 	ruff check --fix .
 
 format:
@@ -47,8 +51,8 @@ format:
 
 bump-version:
 	@# make sure to pull tags in parent repo before running this
-	poetry run python -m aw_server.__about__
-	VERSION=$$(grep -oP '__version__ = "v\K[^"]+' aw_server/__about__.py | head -n1); echo $$VERSION; poetry version $$VERSION
+	$(POETRY) run python -m aw_server.__about__
+	VERSION=$$(grep -oP '__version__ = "v\K[^"]+' aw_server/__about__.py | head -n1); echo $$VERSION; $(POETRY) version $$VERSION
 
 clean:
 	rm -rf build dist
